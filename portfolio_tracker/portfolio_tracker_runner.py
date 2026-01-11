@@ -1,7 +1,16 @@
+import os
+import sys
+
+path_to_add = os.path.abspath(os.path.join(os.path.dirname(__file__), '../'))
+if path_to_add not in sys.path:
+    sys.path.insert(0, path_to_add)
+
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.chart import PieChart, Reference
 from openpyxl.chart.label import DataLabelList
+from portfolio_tracker import config
+from collections import defaultdict
 
 def clean_value(val):
     if isinstance(val, str):
@@ -14,11 +23,8 @@ def clean_value(val):
     
 # Read the CSV file
 # The header has one less comma than data rows, so we'll handle this
-input_file = r'C:\Josh\Stock\Portfolio_Positions_Jan-10-2026.csv'
-temp_file = r'C:\Josh\Stock\Book1_fixed.csv'
-output_excel = r'C:\Josh\Stock\Portfolio_Chart.xlsx'
 # Read the file line by line
-with open(input_file, 'r') as f:
+with open(config.INPUT_FILE, 'r') as f:
     lines = f.readlines()
 
 # Add comma to the first line (header) if it doesn't end with comma
@@ -26,14 +32,14 @@ if lines[0].strip() and not lines[0].strip().endswith(','):
     lines[0] = lines[0].strip() + ',\n'
 
 # Write the fixed version
-with open(temp_file, 'w') as f:
+with open(config.TEMP_FILE, 'w') as f:
     f.writelines(lines)
 
 print("Fixed header row - added comma at the end")
 print()
 
 # Now read the fixed CSV
-df = pd.read_csv(temp_file)
+df = pd.read_csv(config.TEMP_FILE)
 
 # Find the Symbol column
 symbol_col = None
@@ -53,44 +59,41 @@ for col in df.columns:
 print("PORTFOLIO HOLDINGS")
 print("=" * 50)
 
+portfolio_data = defaultdict(list)
+
 if symbol_col and value_col:
-    print(f"{symbol_col:<15} {value_col:>20}")
-    print("-" * 50)
-    
+
     for index, row in df.iterrows():
         symbol = row[symbol_col]
         value = row[value_col]
+        portfolio_data[symbol].append(clean_value(value))
         print(f"{symbol:<15} {value:>20}")
-    
-    print("=" * 50)
-    
+
+    portfolio_data = {key: sum(values) for key, values in portfolio_data.items()}
+
+    print(portfolio_data)
     # Calculate total if possible
-    try:
-        total = pd.to_numeric(df[value_col], errors='coerce').sum()
-        print(f"{'TOTAL:':<15} ${total:>19,.2f}")
-    except:
-        print("Could not calculate total")
-    
-    # Export to Excel with pie chart
-    print()
-    print("Creating Excel file with pie chart...")
+    # try:
+    #     total = pd.to_numeric(df[value_col], errors='coerce').sum()
+    #     print(f"{'TOTAL:':<15} ${total:>19,.2f}")
+    # except:
+    #     print("Could not calculate total")
+
     
     # Prepare data for chart (convert values to numbers)
     chart_data = df[[symbol_col, value_col]].copy()
-    print(chart_data[value_col])
+    # Convert to DataFrame for chart
+    chart_data = pd.DataFrame(list(portfolio_data.items()), columns=['Symbol', 'Value'])
 
-
-    chart_data[value_col] = chart_data[value_col].apply(clean_value)
-    #chart_data[value_col] = pd.to_numeric(chart_data[value_col], errors='coerce')
-    print(chart_data[value_col])
+    print(chart_data)
     total = chart_data.iloc[1:, 1].sum()  # Sum of values column
     chart_data['Percentage'] = ((chart_data.iloc[:, 1] / total))
     
     # Export to Excel
-    chart_data.to_excel(output_excel, index=False, sheet_name='Portfolio')
+    chart_data.to_excel(config.OUTPUT_FILE, index=False, sheet_name='Portfolio')
     
     # Add pie chart
-    wb = load_workbook(output_excel)
+    wb = load_workbook(config.OUTPUT_FILE)
     ws = wb['Portfolio']
     for row in range(2, len(chart_data) + 2):
         cell = ws[f'C{row}']
@@ -130,9 +133,9 @@ if symbol_col and value_col:
     ws.add_chart(pie, "E4")
     
     # Save
-    wb.save(output_excel)
-    
-    print(f"✓ Excel file created: {output_excel}")
+    wb.save(config.OUTPUT_FILE)
+
+    print(f"✓ Excel file created: {config.OUTPUT_FILE}")
     print("  - Data is in columns A & B")
     print("  - Pie chart is on the right")
     
